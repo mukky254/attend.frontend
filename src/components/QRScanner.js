@@ -1,26 +1,64 @@
-import React, { useState, useRef } from 'react';
-import { QrScanner } from '@yudiel/react-qr-scanner';
+import React, { useState, useEffect, useRef } from 'react';
+import { Html5QrcodeScanner } from 'html5-qrcode';
 import axios from 'axios';
 import { toast } from 'react-toastify';
+import './QRScanner.css';
 
 const QRScanner = () => {
   const [scanning, setScanning] = useState(true);
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
+  const scannerRef = useRef(null);
 
-  const handleScan = async (data) => {
-    if (data && scanning) {
+  useEffect(() => {
+    if (scanning) {
+      initializeScanner();
+    }
+
+    return () => {
+      if (scannerRef.current) {
+        scannerRef.current.clear();
+      }
+    };
+  }, [scanning]);
+
+  const initializeScanner = () => {
+    const scanner = new Html5QrcodeScanner(
+      "qr-reader",
+      {
+        fps: 10,
+        qrbox: { width: 250, height: 250 },
+        aspectRatio: 1.0,
+      },
+      /* verbose= */ false
+    );
+
+    scannerRef.current = scanner;
+
+    scanner.render(
+      onScanSuccess,
+      onScanError
+    );
+  };
+
+  const onScanSuccess = async (decodedText, decodedResult) => {
+    if (scanning) {
       setScanning(false);
       setLoading(true);
       
+      if (scannerRef.current) {
+        scannerRef.current.clear();
+      }
+
       try {
         const deviceInfo = {
           user_agent: navigator.userAgent,
-          platform: navigator.platform
+          platform: navigator.platform,
+          language: navigator.language
         };
 
         const response = await axios.post('/api/attendance/scan', {
-          session_id: data,
+          session_id: decodedText,
           device_info: deviceInfo
         });
 
@@ -44,9 +82,9 @@ const QRScanner = () => {
     }
   };
 
-  const handleError = (err) => {
-    console.error(err);
-    toast.error('Error accessing camera');
+  const onScanError = (error) => {
+    console.warn(`Code scan error = ${error}`);
+    // Don't show error to user for normal scanning process
   };
 
   const resetScanner = () => {
@@ -62,14 +100,7 @@ const QRScanner = () => {
         
         {scanning && !loading && (
           <div className="scanner-wrapper">
-            <QrScanner
-              onDecode={handleScan}
-              onError={handleError}
-              constraints={{
-                facingMode: 'environment'
-              }}
-              scanDelay={1000}
-            />
+            <div id="qr-reader" style={{ width: '100%' }}></div>
           </div>
         )}
 
@@ -89,7 +120,11 @@ const QRScanner = () => {
               <div className="attendance-details">
                 <p><strong>Course:</strong> {result.data.course}</p>
                 <p><strong>Time:</strong> {new Date(result.data.time).toLocaleString()}</p>
-                <p><strong>Status:</strong> <span className={`status-${result.data.status}`}>{result.data.status}</span></p>
+                <p><strong>Status:</strong> 
+                  <span className={`status-badge status-${result.data.status}`}>
+                    {result.data.status}
+                  </span>
+                </p>
               </div>
             )}
             
@@ -102,10 +137,11 @@ const QRScanner = () => {
         <div className="scanner-instructions">
           <h4>Instructions:</h4>
           <ul>
-            <li>Ensure good lighting</li>
-            <li>Hold steady while scanning</li>
-            <li>Make sure QR code is within frame</li>
-            <li>Allow camera permissions if prompted</li>
+            <li>Ensure good lighting conditions</li>
+            <li>Hold your device steady</li>
+            <li>Position QR code within the scanning box</li>
+            <li>Allow camera permissions when prompted</li>
+            <li>Works best on mobile devices</li>
           </ul>
         </div>
       </div>
